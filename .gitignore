@@ -1,0 +1,28 @@
+# Local project plan
+/plan.md
+
+# C++ build output
+/build/
+/cmake-build-*/
+*.o
+*.obj
+*.a
+*.so
+*.so.*
+*.dylib
+*.dll
+*.exe
+*.out
+
+# CMake generated files
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
+
+# Local editor and system files
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
