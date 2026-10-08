@@ -542,6 +542,77 @@ private:
 
 - `events` 和 `revents` 都用整数，用位 bit 代表 bool 事件是否发生
 
+### 3. 回调函数
+
+1. 概念：  把一个函数提前注册好，等某个事件发生时，再由其他代码调用它， 回调机制让 `Channel` 只需要知道如何调用函数，不需要知道这个函数究竟是干什么的。
+2. 应用场景
+
+```cpp
+// server中的函数
+    void handleReadEvent(int);
+    void newConnection(Socket *serv_sock);
+
+/* 
+channel回调函数应用 
+*/
+
+// 最开始注册监听socket的时候，设置channel为 newConnection
+    std::function<void()> cb = std::bind(&Server::newConnection, this, serv_sock);
+    servChannel->setCallback(cb);
+
+// 之后如果监听socket有可读信息，调用 newConnection 会创建通信socket，设置channel为 handleReadEvent
+    std::function<void()> cb = std::bind(&Server::handleReadEvent, this, clnt_sock->getFd());
+    clntChannel->setCallback(cb);
+```
+
+## EventLoop
+
+### 1. 基本流程
+
+1.  情况 A：新客户端连接服务器 
+
+```
+客户端调用 connect()
+          ↓
+内核完成 TCP 握手
+          ↓
+新连接进入服务端 accept 队列
+          ↓
+监听 Socket 变为可读
+          ↓
+epoll_wait() 返回对应事件
+          ↓
+Channel::handleEvent()
+          ↓
+Server::newConnection()
+          ↓
+accept()
+          ↓
+获得客户端 Socket
+```
+
+2.  情况 B：已经连接的客户端发送数据 
+
+```
+客户端 A 发送 hello
+          ↓
+数据进入服务端 Socket 接收缓冲区
+          ↓
+客户端 A 对应的 fd=5 变为可读
+          ↓
+epoll_wait() 返回对应事件
+          ↓
+Channel::handleEvent()
+          ↓
+Server::handleReadEvent()
+          ↓
+read()
+          ↓
+读取 hello
+```
+
+![1791467435586](C:\Users\icovo\AppData\Roaming\Typora\typora-user-images\1791467435586.png)
+
 ## Reactor 和 Proactor
 
 Reactor 是非阻塞同步网络模式，而 Proactor 是异步网络模式
