@@ -301,28 +301,9 @@ IP + Port
 
 ---
 
-## Server 与 Client 完整流程
+## TCP通信
 
-```text
-Server                         Client
-
-socket()                       socket()
-   │                              │
-bind()                            │
-   │                              │
-listen()                          │
-   │                              │
-accept() ←────────────────── connect()
-   │
-   ↓
-client_fd
-```
-
-连接成功：
-
-```text
-Client ←──── TCP Connection ────→ Server
-```
+ ![img](data:image/svg+xml;charset=utf-8,%3Csvg%20font-family%3D%22-apple-system-body%2C%20ui-sans-serif%2C%20-apple-system%2C%20system-ui%2C%20Segoe%20UI%2C%20Helvetica%2C%20Apple%20Color%20Emoji%2C%20Arial%2C%20sans-serif%2C%20Segoe%20UI%20Emoji%2C%20Segoe%20UI%20Symbol%22%20font-weight%3D%22400%22%20data-d-component%3D%22svg%22%20fill%3D%22currentColor%22%20style%3D%22color%3Argb(237%2C%20237%2C%20237)%22%20viewBox%3D%220%200%20320%20112%22%20width%3D%22100%25%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Ctext%20x%3D%22160%22%20y%3D%2213%22%20text-anchor%3D%22middle%22%20font-size%3D%2211%22%20fill%3D%22%2316a34a%22%3E%E5%AE%A2%E6%88%B7%E7%AB%AF%E5%8F%91%E9%80%81%E6%95%B0%E6%8D%AE%20%E2%86%92%20%E6%9C%8D%E5%8A%A1%E7%AB%AF%E6%8E%A5%E6%94%B6%E6%95%B0%E6%8D%AE%3C%2Ftext%3E%3Cpath%20d%3D%22M25%2034%20H294%22%20stroke%3D%22%2316a34a%22%20stroke-width%3D%222.5%22%20fill%3D%22none%22%2F%3E%3Cpath%20d%3D%22M282%2028%20L294%2034%20L282%2040%22%20stroke%3D%22%2316a34a%22%20stroke-width%3D%222.5%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3Ctext%20x%3D%2245%22%20y%3D%2228%22%20text-anchor%3D%22middle%22%20font-size%3D%2211%22%20fill%3D%22currentColor%22%3Ewrite()%3C%2Ftext%3E%3Ctext%20x%3D%22265%22%20y%3D%2228%22%20text-anchor%3D%22middle%22%20font-size%3D%2211%22%20fill%3D%22currentColor%22%3Eread()%3C%2Ftext%3E%3Cpath%20d%3D%22M294%2079%20H25%22%20stroke%3D%22%232563eb%22%20stroke-width%3D%222.5%22%20fill%3D%22none%22%2F%3E%3Cpath%20d%3D%22M37%2073%20L25%2079%20L37%2085%22%20stroke%3D%22%232563eb%22%20stroke-width%3D%222.5%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3Ctext%20x%3D%2245%22%20y%3D%2270%22%20text-anchor%3D%22middle%22%20font-size%3D%2211%22%20fill%3D%22currentColor%22%3Eread()%3C%2Ftext%3E%3Ctext%20x%3D%22265%22%20y%3D%2270%22%20text-anchor%3D%22middle%22%20font-size%3D%2211%22%20fill%3D%22currentColor%22%3Ewrite()%3C%2Ftext%3E%3Ctext%20x%3D%22160%22%20y%3D%22103%22%20text-anchor%3D%22middle%22%20font-size%3D%2211%22%20fill%3D%22%232563eb%22%3E%E5%AE%A2%E6%88%B7%E7%AB%AF%E6%8E%A5%E6%94%B6%E6%95%B0%E6%8D%AE%20%E2%86%90%20%E6%9C%8D%E5%8A%A1%E7%AB%AF%E5%8F%91%E9%80%81%E6%95%B0%E6%8D%AE%3C%2Ftext%3E%3C%2Fsvg%3E) 
 
 ## 错误处理
 
@@ -419,6 +400,11 @@ ev.events = EPOLLIN | EPOLLET;    // 监听可读事件 + ET 边缘触发
 
 setnonblocking(sockfd);
 
+/*
+EPOLL_CTL_ADD	添加 fd
+EPOLL_CTL_MOD	修改 fd 的监听事件
+EPOLL_CTL_DEL	删除 fd
+*/
 epoll_ctl(
     epfd,                 // 哪个 epoll
     EPOLL_CTL_ADD,        // 添加 fd
@@ -481,6 +467,26 @@ while (true) {
 2. epoll 本身是持续 while(true) 运行直到有事情处理   `epoll_wait 一直阻塞到有事件`，否则就原地休眠
 
 3. epoll_event 设置ET和LT 主要决定 在 epoll 等到了需要处理的事件之后的 读取方式，例如 ET 通知一次后，会尽量一次把数据读到 `EAGAIN` 
+
+4. 返回值
+
+```cpp
+// 返回epoll实例的文件描述符
+int epfd = epoll_create(1);
+
+/*
+0	操作成功
+-1	操作失败，查看 errno
+*/
+int ret = epoll_ctl(epfd, op, fd, &ev);
+
+/*
+> 0	成功，返回本次获得的就绪事件数量
+0	等待超时，没有获得就绪事件
+-1	出错，具体原因查看 errno
+*/
+int nfds = epoll_wait(epfd, events, maxevents, timeout);
+```
 
 ## C++ 指针创建对象
 
@@ -611,7 +617,7 @@ read()
 读取 hello
 ```
 
-![1791467435586](C:\Users\icovo\AppData\Roaming\Typora\typora-user-images\1791467435586.png)
+![1791538185731](C:\Users\icovo\AppData\Roaming\Typora\typora-user-images\1791538185731.png)
 
 ## Reactor 和 Proactor
 
