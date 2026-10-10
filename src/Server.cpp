@@ -1,4 +1,5 @@
 #include "Server.h"
+#include "Acceptor.h"
 #include "Channel.h"
 #include "InetAddress.h"
 #include "Socket.h"
@@ -10,23 +11,13 @@
 
 #define READ_BUFFER 1024
 
-// 最开始创建server是创建监听server
-Server::Server(EventLoop* _loop) : loop(_loop) {
-    Socket* serv_sock = new Socket();
-
-    InetAddress serv_addr("127.0.0.1", 8888);
-    serv_sock->bind(&serv_addr);
-    serv_sock->listen();
-    serv_sock->setnonblocking();
-
-    Channel* servChannel = new Channel(loop, serv_sock->getFd());
-    std::function<void()> cb = std::bind(&Server::newConnection, this, serv_sock);
-    servChannel->setCallback(cb);
-    servChannel->enableReading();
+Server::Server(EventLoop* _loop)
+    : loop(_loop), acceptor(std::make_unique<Acceptor>(_loop)) {
+    acceptor->setNewConnectionCallback(
+        [this](Socket* listeningSocket) { newConnection(listeningSocket); });
 }
 
-Server::~Server() {
-}
+Server::~Server() = default;
 
 void Server::handleReadEvent(int sockfd) {
     char buf[READ_BUFFER];
