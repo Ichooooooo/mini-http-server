@@ -1,6 +1,9 @@
 # Local project plan
 /plan.md
 
+# lesson folder
+/30daysCppWebServer/
+
 # C++ build output
 /build/
 /cmake-build-*/

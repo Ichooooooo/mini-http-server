@@ -617,6 +617,20 @@ read()
 读取 hello
 ```
 
+3. 基本流程
+
+监听socket添加流程：
+
+```
+Server(loop)
+  → 创建监听 Socket，bind()、listen()
+  → 创建监听 Channel，绑定回调函数
+  → Channel::enableReading()
+  → EventLoop::updateChannel(this)
+  → Epoll::updateChannel()
+  → epoll_ctl(EPOLL_CTL_ADD)
+```
+
 ![1791538185731](C:\Users\icovo\AppData\Roaming\Typora\typora-user-images\1791538185731.png)
 
 ## Reactor 和 Proactor
@@ -635,84 +649,65 @@ Reactor 是非阻塞同步网络模式，而 Proactor 是异步网络模式
 
 ![img](https://picx.zhimg.com/80/v2-7f73fdcaca316aa0f12d77b6873785e5_720w.webp?source=2c26e567)
 
-## 事件驱动封装
+## Acceptor 解耦
 
-### 1. 联系
+### 1. 原因
 
-前面为了传递更多信息定义了 Channel 类，里面封装了很多参数，现在继续封装函数
+Server类承担了最开始监听socket的一系列初始化等，现在解耦，新加入Acceptor类执行监听socket的一系列初始化
 
-### 2. 流程
+### 2. 调用顺序
 
-```text
-     EventLoop // 之前的 epoll_wait
-         │
-         │ 发现事件
-         ↓
-      Channel  // 封装了参数和函数
-         │
-         │ callback // 回调函数：提前塞进去、以后再调用
-         ↓
- Server::newConnection()
-         或
- Server::handleReadEvent()
+```
+Server(loop)
+  → new Acceptor(loop)
+      → 创建监听 Channel
+      → Channel 绑定 Acceptor::acceptConnection
+      → 注册到 epoll
+  → Acceptor 绑定 Server::newConnection
+  → Server 初始化完成
+
+loop->loop()
+  → Channel::handleEvent()
+  → Acceptor::acceptConnection()
+  → Server::newConnection()
+  → Socket::accept()
 ```
 
-### 3. Channel
+### 3. 关于bind绑定回调函数
 
-```text
-Channel
-├── fd
-├── events
-├── revents
-└── std::function<void()> callback; // 函数对象
+> `std::bind` 生成一个保存调用信息的对象，`std::function` 保存这个对象，真正执行时才调用目标函数 
+
+## Connection
+
+### 1. 原因
+
+由监听socket监听到的socket原来由Server确定逻辑，现在分离出来，完成echo通信和初始化等等操作
+
+### 2. 调用顺序
+
+```
+连接建立：
+Acceptor::acceptConnection()
+  → accept()
+  → Server::newConnection()
+  		→ new Connection(loop, sock)
+  		→ conn->setDeleteConnectionCallback(cb); （绑定删除函数的对象，存储map）
+  			→ 创建 Channel
+  			→ channel 绑定 Connection::echo()
+  			→ enableReading()
+  
+连接断开：
+Connection::echo()
+  → read() 返回 0
+  → deleteConnectionCallback(sock)
+  		→ Server::deleteConnection()
+ 	 		→ 从 map 移除
+ 	 		→ delete Connection
 ```
 
-### 4. 代码结构
+### 3. 分离原因
 
-```text
-server.cpp
-│
-├── EventLoop.h
-│   ├── Epoll *ep
-│   ├── bool quit
-│   ├── loop()
-│   └── updateChannel(Channel*)
-│
-├── Server.h
-│   ├── EventLoop *loop
-│   ├── newConnection(Socket*)
-│   └── handleReadEvent(int)
-│
-└── src/
-    ├── Epoll.h
-    │   ├── int epfd
-    │   ├── epoll_event *events
-    │   ├── updateChannel(Channel*)
-    │   └── poll() -> vector<Channel*>
-    │
-    ├── Channel.h
-    │   ├── EventLoop *loop
-    │   ├── int fd
-    │   ├── events
-    │   ├── revents
-    │   ├── inEpoll
-    │   ├── callback
-    │   ├── enableReading()
-    │   ├── handleEvent()
-    │   └── setCallback()
-    │
-    ├── Socket.h
-    │   ├── int fd
-    │   ├── bind()
-    │   ├── listen()
-    │   ├── accept()
-    │   ├── setnonblocking()
-    │   └── getFd()
-    │
-    ├── InetAddress.h
-    │   ├── sockaddr_in addr
-    │   └── addr_len
-    │
-    └── util.h
-        └── errif()
-```
+ 为了降低类之间的耦合 ，设计思路： 职责分离 + 回调解耦 + 所有权管理 
+
+
+
