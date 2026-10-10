@@ -2,6 +2,6 @@
 
 server:
 	g++ -std=c++17 src/util.cpp client.cpp -o client && \
-	g++ -std=c++17 src/util.cpp server.cpp src/Epoll.cpp src/InetAddress.cpp src/Socket.cpp src/Channel.cpp src/EventLoop.cpp src/Acceptor.cpp src/Server.cpp -o server
+	g++ -std=c++17 src/util.cpp server.cpp src/Epoll.cpp src/InetAddress.cpp src/Socket.cpp src/Channel.cpp src/EventLoop.cpp src/Acceptor.cpp src/TcpConnection.cpp src/Server.cpp -o server
 clean:
 	rm server && rm client

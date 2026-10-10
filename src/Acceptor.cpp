@@ -2,6 +2,7 @@
 #include "Channel.h"
 #include "InetAddress.h"
 #include "Socket.h"
+#include <cstdio>
 #include <utility>
 
 Acceptor::Acceptor(EventLoop* loop)
@@ -21,12 +22,19 @@ Acceptor::Acceptor(EventLoop* loop)
 Acceptor::~Acceptor() = default;
 
 void Acceptor::acceptConnection() {
-    // 实际 accept() 和客户端管理仍由 Server 完成。
+    InetAddress addr;
+    auto clientSocket = std::make_unique<Socket>(sock->accept(&addr));
+    printf("new client fd %d! IP: %s Port: %d\n", clientSocket->getFd(),
+           inet_ntoa(addr.addr.sin_addr), ntohs(addr.addr.sin_port));
+    clientSocket->setnonblocking();
+
+    // 与 Day 8 一样，这里交付的是客户端 Socket；move 明确转移所有权。
     if (newConnectionCallback) {
-        newConnectionCallback(sock.get());
+        newConnectionCallback(std::move(clientSocket));
     }
 }
 
-void Acceptor::setNewConnectionCallback(std::function<void(Socket*)> callback) {
+void Acceptor::setNewConnectionCallback(
+    std::function<void(std::unique_ptr<Socket>)> callback) {
     newConnectionCallback = std::move(callback);
 }

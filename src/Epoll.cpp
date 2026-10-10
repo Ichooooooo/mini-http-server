@@ -59,10 +59,16 @@ void Epoll::updateChannel(Channel *channel){
     ev.events = channel->getEvents();
     if(!channel->getInEpoll()){
         errif(epoll_ctl(epfd, EPOLL_CTL_ADD, fd, &ev) == -1, "epoll add error");
-        channel->setInEpoll();
+        channel->setInEpoll(true);
         // debug("Epoll: add Channel to epoll tree success, the Channel's fd is: ", fd);
     } else{
         errif(epoll_ctl(epfd, EPOLL_CTL_MOD, fd, &ev) == -1, "epoll modify error");
         // debug("Epoll: modify Channel in epoll tree success, the Channel's fd is: ", fd);
     }
+}
+
+void Epoll::removeChannel(Channel *channel){
+    errif(epoll_ctl(epfd, EPOLL_CTL_DEL, channel->getFd(), nullptr) == -1,
+          "epoll delete error");
+    channel->setInEpoll(false);
 }

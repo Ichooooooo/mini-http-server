@@ -7,6 +7,7 @@ Channel::Channel(EventLoop *_loop, int _fd) : loop(_loop), fd(_fd), events(0), r
 
 Channel::~Channel()
 {
+    remove();
 }
 
 void Channel::handleEvent(){
@@ -16,6 +17,14 @@ void Channel::handleEvent(){
 void Channel::enableReading(){
     events = EPOLLIN;
     loop->updateChannel(this);
+}
+
+void Channel::remove(){
+    if (inEpoll) {
+        loop->removeChannel(this);
+    }
+    events = 0;
+    revents = 0;
 }
 
 int Channel::getFd(){
@@ -33,8 +42,8 @@ bool Channel::getInEpoll(){
     return inEpoll;
 }
 
-void Channel::setInEpoll(){
-    inEpoll = true;
+void Channel::setInEpoll(bool registered){
+    inEpoll = registered;
 }
 
 // void Channel::setEvents(uint32_t _ev){

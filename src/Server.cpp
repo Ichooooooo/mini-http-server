@@ -1,59 +1,29 @@
 #include "Server.h"
 #include "Acceptor.h"
-#include "Channel.h"
-#include "InetAddress.h"
+#include "EventLoop.h"
 #include "Socket.h"
-#include <cerrno> // errno、EINTR、EAGAIN、EWOULDBLOCK
-#include <cstdio> // printf()
-#include <functional>
-#include <string.h>
-#include <unistd.h>
+#include "TcpConnection.h"
 
-#define READ_BUFFER 1024
+#include <utility>
 
 Server::Server(EventLoop* _loop)
     : loop(_loop), acceptor(std::make_unique<Acceptor>(_loop)) {
     acceptor->setNewConnectionCallback(
-        [this](Socket* listeningSocket) { newConnection(listeningSocket); });
+        [this](std::unique_ptr<Socket> sock) { newConnection(std::move(sock)); });
 }
 
+// 必须在 loop 停止后销毁 Server，并且 EventLoop 要比 Server 活得更久。
 Server::~Server() = default;
 
-void Server::handleReadEvent(int sockfd) {
-    char buf[READ_BUFFER];
-    while (true) { // 由于使用非阻塞IO，读取客户端buffer，一次读取buf大小数据，直到全部读取完毕
-        bzero(&buf, sizeof(buf));
-        ssize_t bytes_read = read(sockfd, buf, sizeof(buf));
-        if (bytes_read > 0) {
-            printf("message from client fd %d: %.*s\n", sockfd, static_cast<int>(bytes_read), buf);
-            write(sockfd, buf, bytes_read);
-        } else if (bytes_read == -1 && errno == EINTR) { // 客户端正常中断、继续读取
-            printf("continue reading");
-            continue;
-        } else if (bytes_read == -1 && ((errno == EAGAIN) || (errno == EWOULDBLOCK))) { // 非阻塞IO，这个条件表示数据全部读取完毕
-            printf("finish reading once, errno: %d\n", errno);
-            break;
-        } else if (bytes_read == 0) { // EOF，客户端断开连接
-            printf("EOF, client fd %d disconnected\n", sockfd);
-            close(sockfd); // 关闭socket会自动将文件描述符从epoll树上移除
-            break;
-        } else {
-            perror("read");
-            close(sockfd);
-            break;
-        }
-    }
+void Server::newConnection(std::unique_ptr<Socket> sock) {
+    const int sockfd = sock->getFd();
+    auto connection = std::make_unique<TcpConnection>(loop, std::move(sock));
+    connection->setDeleteConnectionCallback(
+        [this](int fd) { deleteConnection(fd); });
+    connections.emplace(sockfd, std::move(connection));
 }
 
-void Server::newConnection(Socket* serv_sock) {
-    InetAddress clnt_addr;
-
-    Socket* clnt_sock = new Socket(serv_sock->accept(&clnt_addr));
-
-    printf("new client fd %d! IP: %s Port: %d\n", clnt_sock->getFd(), inet_ntoa(clnt_addr.addr.sin_addr), ntohs(clnt_addr.addr.sin_port));
-    clnt_sock->setnonblocking();
-    Channel* clntChannel = new Channel(loop, clnt_sock->getFd());
-    std::function<void()> cb = std::bind(&Server::handleReadEvent, this, clnt_sock->getFd());
-    clntChannel->setCallback(cb);
-    clntChannel->enableReading();
+void Server::deleteConnection(int sockfd) {
+    // 不能在 TcpConnection 自己的读回调中立即 erase，当前批次仍可能持有 Channel*。
+    loop->queueInLoop([this, sockfd] { connections.erase(sockfd); });
 }

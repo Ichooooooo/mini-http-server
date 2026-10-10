@@ -17,12 +17,13 @@ public:
 
     void handleEvent();
     void enableReading();
+    void remove();
 
     int getFd();
     uint32_t getEvents();
     uint32_t getRevents();
     bool getInEpoll();
-    void setInEpoll();
+    void setInEpoll(bool registered);
 
     // void setEvents(uint32_t);
     void setRevents(uint32_t);
