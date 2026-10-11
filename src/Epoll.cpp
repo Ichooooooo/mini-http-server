@@ -3,6 +3,7 @@
 #include "Channel.h"
 #include <unistd.h>
 #include <string.h>
+#include <cerrno>
 
 #define MAX_EVENTS 1000
 
@@ -42,6 +43,9 @@ void Epoll::addFd(int fd, uint32_t op){
 std::vector<Channel*> Epoll::poll(int timeout){
     std::vector<Channel*> activeChannels;
     int nfds = epoll_wait(epfd, events, MAX_EVENTS, timeout);
+    if (nfds == -1 && errno == EINTR) {
+        return activeChannels; // 返回空批次，由 EventLoop 继续下一次等待。
+    }
     errif(nfds == -1, "epoll wait error");
     for(int i = 0; i < nfds; ++i){
         Channel *ch = (Channel*)events[i].data.ptr;

@@ -709,5 +709,51 @@ Connection::echo()
 
  为了降低类之间的耦合 ，设计思路： 职责分离 + 回调解耦 + 所有权管理 
 
+## 内存管理
 
+### 1. delete
 
+```
+   delete Socket
+     → ~Socket()
+     → close(fd) // 只关闭内核资源，不会删除 Socket、Channel、TcpConnection
+     → 释放 Socket 对象内存
+```
+
+### 2. 智能指针
+
+1. 思想： 用一个能够自动管理对象生命周期的 C++ 对象，代替需要手动 delete 的裸指针 
+2.  unique_ptr
+
+```cpp
+#include <memory>
+
+// 创建
+auto sock = std::make_unique<Socket>();
+
+// 使用
+sock->setnonblocking();
+
+/*
+释放：离开作用域自动释放
+unique_ptr 析构
+       ↓
+删除 Socket 对象  （删除自己）
+       ↓
+执行 Socket::~Socket()  （删除自身管理的对象）
+       ↓
+close(fd)
+*/
+Socket::~Socket() {
+    if (fd != -1) {
+        close(fd);
+        fd = -1;
+    }
+}
+
+// get函数：借用，指向同一个socket
+Socket* q = p.get();
+
+// move函数，转移所有权
+auto sock = std::move(clientSocket);
+```

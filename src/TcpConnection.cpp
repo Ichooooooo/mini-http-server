@@ -5,6 +5,7 @@
 #include <cerrno>
 #include <cstdio>
 #include <unistd.h>
+#include <sys/socket.h>
 #include <utility>
 
 TcpConnection::TcpConnection(EventLoop* loop, std::unique_ptr<Socket> socket)
@@ -29,8 +30,17 @@ void TcpConnection::handleReadEvent() {
         if (bytesRead > 0) {
             printf("message from client fd %d: %.*s\n", sockfd,
                    static_cast<int>(bytesRead), buf);
-            // 当前仅迁移 Echo。短写、EAGAIN 和输出缓冲在后续步骤实现。
-            write(sockfd, buf, bytesRead);
+            ssize_t bytesSent;
+            do {
+                // 单次调用抑制 SIGPIPE，仍通过返回值处理 EPIPE 等断连错误。
+                bytesSent = send(sockfd, buf, bytesRead, MSG_NOSIGNAL);
+            } while (bytesSent == -1 && errno == EINTR);
+            if (bytesSent == -1 && errno != EAGAIN && errno != EWOULDBLOCK) {
+                perror("send");
+                handleClose();
+                return;
+            }
+            // 短写 / EAGAIN 的剩余字节尚未保存，下一步用 Buffer 和 EPOLLOUT 补齐。
         } else if (bytesRead == -1 && errno == EINTR) {
             continue; // 系统调用被信号打断，重试读取。
         } else if (bytesRead == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {

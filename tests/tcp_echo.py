@@ -4,6 +4,7 @@ import argparse
 import contextlib
 import pathlib
 import socket
+import struct
 import subprocess
 import tempfile
 import time
@@ -95,6 +96,15 @@ def run(binary):
                 assert client.recv(1) == b"", "EOF 后未关闭连接"
             wait_for_fd_count(process, baseline)
             print("PASS: 小消息后半关闭，收到 Echo 和 EOF")
+
+            for _ in range(20):
+                with connect() as client:
+                    echo(client, b"before reset")
+                    client.sendall(b"x" * 1024)
+                    client.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER,
+                                      struct.pack("ii", 1, 0))
+            wait_for_fd_count(process, baseline)
+            print("PASS: 20 次发送后 RST 断连，服务器存活并回收 fd")
 
             with connect() as client:
                 echo(client, b"still alive")

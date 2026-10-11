@@ -29,7 +29,8 @@ void testDeferredClose() {
     assert(result == 0);
     Socket peer(fds[1]);
     auto socket = std::make_unique<Socket>(fds[0]);
-    socket->setnonblocking();
+    const bool nonblocking = socket->setnonblocking();
+    assert(nonblocking);
     auto connection = std::make_unique<TcpConnection>(&loop, std::move(socket));
     int closeCalls = 0;
 
@@ -82,7 +83,8 @@ void testServerDestruction() {
             assert(result == 0);
             Socket peer(fds[1]);
             auto socket = std::make_unique<Socket>(fds[0]);
-            socket->setnonblocking();
+            const bool nonblocking = socket->setnonblocking();
+            assert(nonblocking);
             clientFds.push_back(fds[0]);
             server.newConnection(std::move(socket));
         }
