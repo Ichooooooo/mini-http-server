@@ -1,6 +1,21 @@
-# 当前 TCP Echo 回归
+# Buffer 与当前 TCP Echo 回归
 
-在仓库根目录顺序执行。TCP 测试和包含 Acceptor/Server 的 C++ 测试需要 127.0.0.1:8888 空闲。
+在仓库根目录顺序执行。TCP 测试和包含 Acceptor/Server 的 C++ 测试需要 127.0.0.1:8888 空闲；独立 Buffer 测试不需要网络端口。
+
+## 独立 Buffer 测试
+
+```sh
+mkdir -p build
+g++ -std=c++17 -Wall -Wextra -Wpedantic -g -Isrc tests/buffer.cpp src/Buffer.cpp -o build/buffer
+timeout 10s ./build/buffer
+
+g++ -std=c++17 -Wall -Wextra -Wpedantic -g -fsanitize=address,undefined -fno-omit-frame-pointer -Isrc tests/buffer.cpp src/Buffer.cpp -o build/buffer-asan
+ASAN_OPTIONS=detect_leaks=1 timeout 10s ./build/buffer-asan
+```
+
+`buffer.cpp` 检查初始为空、零长度操作、顺序追加、部分/全部消费、清空后复用、包含零字节的数据、追加内容不依赖来源生命周期、压缩与扩容、超量消费和非零长度空指针报错，以及 1000 轮部分消费后追加。超量消费抛出 `std::out_of_range`，非零长度空指针追加抛出 `std::invalid_argument`，这些错误不改变可读内容。
+
+`peek()` 返回借用指针，必须配合 `readableBytes()` 使用；修改或销毁 Buffer 后需要重新获取。`append()` 的来源不能指向同一个 Buffer 的内部存储。本批 Buffer 是独立组件，尚未接入 TcpConnection，不代表短写、发送 EAGAIN 或 EPOLLOUT 已实现。
 
 ## 普通构建
 

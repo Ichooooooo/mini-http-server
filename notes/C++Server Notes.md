@@ -757,3 +757,21 @@ Socket* q = p.get();
 // move函数，转移所有权
 auto sock = std::move(clientSocket);
 ```
+
+## plan
+
+9 -> 21 -> 18-19
+
+## Buffer
+
+### 1. 函数
+
+```cpp
+// 返回字符串的字符指针 
+const char* Buffer::c_str() {
+    return buf.c_str();
+}
+
+// 
+```
+
