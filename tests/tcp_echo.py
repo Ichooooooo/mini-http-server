@@ -1,4 +1,4 @@
-"""Day 8 TCP Echo 回归；运行：python3 tests/tcp_echo.py <server 可执行文件>。"""
+"""TCP Echo 回归；运行：python3 tests/tcp_echo.py <server 可执行文件>。"""
 
 import argparse
 import contextlib
@@ -73,6 +73,12 @@ def run(binary):
                 echo(client, bytes(range(256)) * 4)  # 包含零字节。
             print("PASS: 文本、1024 字节满缓冲、二进制 Echo")
 
+            with connect() as client:
+                echo(client, bytes(range(256)) * 1024)
+                echo(client, b"after large echo")
+            wait_for_fd_count(process, baseline)
+            print("PASS: 256 KiB 二进制 Echo，随后同连接仍可收发")
+
             with contextlib.ExitStack() as stack:
                 clients = [stack.enter_context(connect()) for _ in range(8)]
                 for index, client in enumerate(clients):
@@ -96,6 +102,15 @@ def run(binary):
                 assert client.recv(1) == b"", "EOF 后未关闭连接"
             wait_for_fd_count(process, baseline)
             print("PASS: 小消息后半关闭，收到 Echo 和 EOF")
+
+            with connect() as client:
+                payload = bytes(range(256)) * 1024
+                client.sendall(payload)
+                client.shutdown(socket.SHUT_WR)
+                assert receive_exact(client, len(payload)) == payload
+                assert client.recv(1) == b"", "大消息未发送完或 EOF 后未关闭连接"
+            wait_for_fd_count(process, baseline)
+            print("PASS: 256 KiB 消息后半关闭，收到完整 Echo 和 EOF")
 
             for _ in range(20):
                 with connect() as client:

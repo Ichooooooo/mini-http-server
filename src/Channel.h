@@ -16,7 +16,11 @@ public:
     ~Channel();
 
     void handleEvent();
+    // 独立增减读写事件，保留其他事件位，并同步到 epoll。
     void enableReading();
+    void disableReading();
+    void enableWriting();
+    void disableWriting();
     void remove();
 
     int getFd();

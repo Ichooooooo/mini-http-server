@@ -15,7 +15,28 @@ void Channel::handleEvent(){
 }
 
 void Channel::enableReading(){
-    events = EPOLLIN;
+    events |= EPOLLIN;
+    loop->updateChannel(this);
+}
+
+void Channel::disableReading(){
+    if (!(events & EPOLLIN)) {
+        return;
+    }
+    events &= ~EPOLLIN;
+    loop->updateChannel(this);
+}
+
+void Channel::enableWriting(){
+    events |= EPOLLOUT;
+    loop->updateChannel(this);
+}
+
+void Channel::disableWriting(){
+    if (!(events & EPOLLOUT)) {
+        return;
+    }
+    events &= ~EPOLLOUT;
     loop->updateChannel(this);
 }
 

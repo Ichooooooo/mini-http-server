@@ -758,20 +758,104 @@ Socket* q = p.get();
 auto sock = std::move(clientSocket);
 ```
 
-## plan
-
-9 -> 21 -> 18-19
-
 ## Buffer
 
-### 1. 函数
+### 1. **作用**
+保存和管理尚未处理的字节数据。通常使用 `std::string storage` 存储数据，`readIndex` 记录已消费的位置。
+
+### 2. 核心接口：
+
+   - `append(data, length)`：追加指定长度的字节，包括 `'\0'`。
+   - `readableBytes()`：未消费字节数，即 `storage.size() - readIndex`。
+   - `peek()`：返回未消费数据的起始地址，不复制数据。
+   - `retrieve(n)`：消费前 n 个字节，本质是移动 `readIndex`。
+- `retrieveAll()`：清空有效数据，重置索引。
+### 3. **两种 Buffer**：
+   - Input Buffer：保存 `read()` 收到但尚未解析的数据。
+- Output Buffer：保存尚未成功发送的数据，解决短写和 `EAGAIN` 导致的数据丢失。
+  
+   `因为会存起来所以EAGAIN之后依旧可以从上次断开的地方开始`
+   
+### 4. **非阻塞发送**：
+
+   - `send()` 成功多少字节，就 `retrieve(n)` 消费多少（消费指被处理完）。
+   - 出现 `EAGAIN`：保留剩余数据，等待 Socket 再次可写。
+- Output Buffer 有积压时监听 `EPOLLOUT`，清空后取消监听，避免 LT 模式下忙循环。
+  
+   `因为常常处于Socket可写状态，不代表你有数据需要发送但会触发epoll_wait，一直监听会浪费资源造成‘忙循环’`
+   
+### 5. **EPOLLOUT 位运算**：
+
+   - `events |= EPOLLOUT`：开启写事件监听。
+   - `events &= ~EPOLLOUT`：关闭写事件监听。
+   - 不使用 `^=`，因为异或会翻转状态，重复调用可能重新开启监听。
+
+### 6. outputBuffer
+
+1. send 和 write 区别
 
 ```cpp
-// 返回字符串的字符指针 
-const char* Buffer::c_str() {
-    return buf.c_str();
-}
-
-// 
+/*  
+1.sockfd：发送给哪个socket 
+2.buf：发送数据  
+3.len：数据长度
+flags：发送选项，比如 MSG_NOSIGNAL 防止断连时 SIGPIPE 终止整个进程，write没有最后一个bool
+*/
+send(sockfd, buf, len, flags);
 ```
 
+2. 异常处理
+
+```
+
+```
+
+3. 回调函数
+
+```cpp
+/* 方式1：
+提前绑定参数
+之后调用cb(), 实际上是调用this->handleReadEvent(5);
+*/
+std::function<void()> cb = 
+    std::bind(
+        &Server::handleReadEvent,  // 绑定的函数
+        this,  // 绑定一个对象
+        clnt_sock->getFd() 	// 传入函数的参数
+    );
+
+/* 方式2：
+参数延迟绑定，调用需要传参
+之后调用cb(5), 实际上是调用this->deleteConnection(5)
+*/
+std::bind(
+    &Server::deleteConnection,
+    this,
+    std::placeholders::_1
+)
+   
+/* 方式3：
+lambda函数：
+1. [this, fd] () { deleteConnection() }	
+创建回调时捕获参数
+2. [this] (int fd) { deleteConnection(fd) }
+调用回调时传入参数
+3. [this] (int fd) { connections.erase(sockfd); }
+函数内容自定
+*/
+connection->setDeleteConnectionCallback(
+    // 传入一个lambda函数
+    [this](int fd) {
+        deleteConnection(fd);
+    }
+);
+```
+
+## 错误码
+
+ EAGAIN ：  现在暂时无法完成操作，稍后再试 
+
+ EINTR ： Interrupted System Call（系统调用被中断） 
+
+`区别：``EINTR	系统调用被信号中断	立即重新调用 send()
+EAGAIN	非阻塞 Socket 当前无法继续发送	等待下一次 EPOLLOUT`
